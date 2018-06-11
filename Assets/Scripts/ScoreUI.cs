@@ -18,7 +18,7 @@ public class ScoreUI : MonoBehaviour
 
         if (!m_GameManager.m_GameOver)
         {
-            m_TimeText.text = "Time : " + Mathf.Floor(Time.time).ToString();
+            m_TimeText.text = "Time : " + Mathf.Floor(Time.timeSinceLevelLoad).ToString();
         }
     }
 }

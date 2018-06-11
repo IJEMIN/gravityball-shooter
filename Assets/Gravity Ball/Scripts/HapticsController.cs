@@ -136,6 +136,7 @@ public class HapticsController : MonoBehaviour
     {
         // Stop the emitter when this GameObject is destroyed
         _amEmitter.stop();
+        _amEmitter.Dispose();
     }
 
     /// <summary>

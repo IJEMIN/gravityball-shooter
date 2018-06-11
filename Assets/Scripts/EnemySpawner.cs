@@ -31,7 +31,7 @@ public class EnemySpawner : MonoBehaviour
 
             var enemyInstance = Instantiate(m_EnemyPrefab, m_SpawnPosTransform.position, m_SpawnPosTransform.rotation);
 
-            enemyInstance.Setup(7f, 50, 100, Color.green);
+            enemyInstance.Setup(3f, 50, 100, Color.green);
         }
 
     }

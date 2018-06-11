@@ -29,6 +29,8 @@ public class GravityBall : MonoBehaviour
 
     public bool m_IsTouched { get; private set; }
 
+    public HapticsController m_HapticsController;
+
     private Vector3 m_StartPos;
 
     private Material m_RenderMaterial;
@@ -57,6 +59,7 @@ public class GravityBall : MonoBehaviour
     private void Awake()
     {
         m_Rigidbody = GetComponent<Rigidbody>();
+        m_HapticsController = FindObjectOfType<HapticsController>();
     }
 
     private void Start()
@@ -72,10 +75,15 @@ public class GravityBall : MonoBehaviour
         if (GetButton())
         {
             m_RenderMaterial.color = m_PressedColor;
+            m_HapticsController.currentFrequency = 200f;
+            m_HapticsController.hapticStrength = 1f;
         }
         else
         {
             m_RenderMaterial.color = m_IdleColor;
+
+            m_HapticsController.currentFrequency = 164f;
+            m_HapticsController.hapticStrength = 0.8f;
         }
     }
 
@@ -119,7 +127,7 @@ public class GravityBall : MonoBehaviour
 
         if (m_Rigidbody.angularVelocity.sqrMagnitude >= 1.0f)
         {
-            inputFactorBySwipe = 1.0f / m_Rigidbody.angularVelocity.sqrMagnitude;
+            inputFactorBySwipe = 1f / m_Rigidbody.angularVelocity.sqrMagnitude;
         }
 
 
@@ -178,7 +186,7 @@ public class GravityBall : MonoBehaviour
             angularVelocity.y = 0;
         }
 
-        float factorByButton = GetButton() ? 0.1f : 1.0f;
+        float factorByButton = GetButton() ? 0.01f : 1.0f;
 
         if (inputName == m_XSwipeInputName)
         {

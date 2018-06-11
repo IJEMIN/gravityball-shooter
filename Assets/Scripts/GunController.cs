@@ -13,11 +13,15 @@ public class GunController : MonoBehaviour
 	public float m_HoverRange = 0.5f;
 	private Vector3 m_StartPos;
 
+    private Rigidbody m_GunRigidbody;
+
 
 	void Start()
 	{
 		m_StartPos = m_Gun.transform.position;
-	}
+        m_GunRigidbody = m_Gun.GetComponent<Rigidbody>();
+
+    }
     // Update is called once per frame
     void Update()
     {
@@ -35,9 +39,9 @@ public class GunController : MonoBehaviour
         }
 
         float scroll = GravityBall.Instance.GetInputSwipe("Scroll");
-        float yaw = GravityBall.Instance.GetInputSwipe("Stroke");
+        float yaw = -GravityBall.Instance.GetInputSwipe("Stroke");
 
-        m_Gun.transform.Rotate(scroll * m_ScrollSpeed * Time.deltaTime, yaw * m_YawSpeed * Time.deltaTime, 0f, Space.World);
+        m_GunRigidbody.AddTorque(scroll * m_ScrollSpeed * Time.deltaTime, yaw * m_YawSpeed * Time.deltaTime, 0f);
 
 
         float xInput = GravityBall.Instance.GetInputAxis("Horizontal");
