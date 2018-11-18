@@ -1,87 +1,88 @@
-using UnityEngine;
-using Ultrahaptics;
-using System.Linq;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using Ultrahaptics;
+using UnityEngine;
+using Vector3 = UnityEngine.Vector3;
 
 /// <summary>
-/// Controller class for all the haptics in the scene.
-/// This class is responsible for controlling the Ultrahaptics device
-/// and telling it when and where to emit control points.
+///     Controller class for all the haptics in the scene.
+///     This class is responsible for controlling the Ultrahaptics device
+///     and telling it when and where to emit control points.
 /// </summary>
 public class HapticsController : MonoBehaviour
 {
-    public float contactPointBackwardAdjust = 0.001f;
-
-    [Range(100f,200f)]
-    public float currentFrequency = 200f;
-
-    [Range(0f,1.0f)]
-    public float hapticStrength = 0.5f;
-
-    // The parent GameObject of the hands (so we can get access to the haptic receivers)
-    [SerializeField]
-    private GameObject _handsRoot;
-
-    public int currentControlPoints
+    public enum IntensityMode
     {
-        get
-        {
-            if(hapticStrength < 0.95f)
-            {
-                return (int)(_maxControlPoints * 1.5f);
-            }
-            else
-            {
-                return _maxControlPoints;
-            }
-        }
+        Strong,
+        Normal,
+        Weak
     }
-
-    // 4 is the maximum number of control points that should be emitted at any time
-    // If this number is set higher than 4 then all points will be weaker
-    private int _maxControlPoints = 4;
 
     // The AmplitudeModulationEmitter allows us to control the Ultrahaptics array.
     // Please refer to the SDK documentation for an explanation of the difference between
     // AmplitudeModulationEmitter and TimePointStreamingEmitter.
     private AmplitudeModulationEmitter _amEmitter;
-    List<UnityEngine.Vector3> _debugPoints = new List<UnityEngine.Vector3>();
 
     // The CoordinateSpaceConverter enables conversion between world space and device coordinate space
     private CoordinateSpaceConverter _coordinateSpaceConverter;
-    
+    private List<Vector3> _debugPoints = new List<Vector3>();
+
+
+    // The parent GameObject of the hands (so we can get access to the haptic receivers)
+    [SerializeField] private GameObject _handsRoot;
+
     // A collection of all the haptic receivers in the scene
     private HapticReceiver[] _hapticReceivers;
 
+
+    // 4 is the maximum number of control points that should be emitted at any time
+    // If this number is set higher than 4 then all points will be weaker
+    private readonly int _maxControlPoints = 4;
+    public float contactPointBackwardAdjust = 0.001f;
+
+    private readonly List<Vector3> contactPoints = new List<Vector3>();
+
+
+    private int currentlyPayingTick;
+
+    public IntensityMode intensityMode = IntensityMode.Normal;
+
+    public float currentFrequency { get; private set; }
+
+    public float hapticStrength { get; private set; }
+
     // Use this for initialization
-    void Start()
+    private void Start()
     {
         _amEmitter = new AmplitudeModulationEmitter();
         _coordinateSpaceConverter = FindObjectOfType<CoordinateSpaceConverter>();
         _hapticReceivers = _handsRoot.GetComponentsInChildren<HapticReceiver>(true);
+        currentlyPayingTick = 0;
 
-        if (!_amEmitter.isConnected())
-        {
-            Debug.LogWarning("No Ultrahaptics array connected");
-        }
+        if (!_amEmitter.isConnected()) Debug.LogWarning("No Ultrahaptics array connected");
     }
 
     // Update is called once per frame
-    void FixedUpdate()
+    private void FixedUpdate()
     {
-        // Get the current contact points from all the haptic receivers
-        var contactPoints = new List<UnityEngine.Vector3>();
+        UpdateIntensity();
 
-        for(int i = 0; i < _hapticReceivers.Length; i++)        {
+
+        // Get the current contact points from all the haptic receivers
+        contactPoints.Clear();
+
+        for (var i = 0; i < _hapticReceivers.Length; i++)
             if (_hapticReceivers[i].gameObject.activeInHierarchy)
             {
                 var contactHits = _hapticReceivers[i].GetCurrentContactPoint();
 
-                contactPoints.AddRange(contactHits.Select((hit) => hit.point + hit.normal * contactPointBackwardAdjust));
+                if (contactHits != null)
+                    contactPoints.AddRange(contactHits.Select(hit =>
+                        hit.point + hit.normal * contactPointBackwardAdjust));
             }
-        }
 
-        if(contactPoints.Count <= 0)
+        if (contactPoints.Count <= 0)
         {
             _amEmitter.stop();
             return;
@@ -100,39 +101,52 @@ public class HapticsController : MonoBehaviour
         foreach (var pointToEmit in pointsToEmit)
         {
             // The positions are in world space so convert them to device space
-            var deviceSpacePosition = _coordinateSpaceConverter.WorldToDevicePosition(pointToEmit);
+            var deviceSpacePosition =
+                _coordinateSpaceConverter.WorldToDevicePosition(pointToEmit);
             // Construct a control point with the position and intensity of the point
-            var amControlPoint = new AmplitudeModulationControlPoint(deviceSpacePosition, hapticStrength);
+            var amControlPoint =
+                new AmplitudeModulationControlPoint(deviceSpacePosition, hapticStrength);
 
-            amControlPoint.setFrequency(currentFrequency * (float)Units.hertz);
+            amControlPoint.setFrequency(currentFrequency * (float) Units.hertz);
 
             amControlPoints.Add(amControlPoint);
         }
 
         // Give the list of control points to the emitter
-        if (contactPoints.Count > 0)
+        if (contactPoints.Count > 0) _amEmitter.update(amControlPoints);
+    }
+
+    private void UpdateIntensity()
+    {
+        if (currentlyPayingTick > 0) return;
+
+        if (intensityMode == IntensityMode.Weak)
         {
-            _amEmitter.update(amControlPoints);
+            currentFrequency = 144f;
+            hapticStrength = 0.5f;
+        }
+        else if (intensityMode == IntensityMode.Normal)
+        {
+            currentFrequency = 164f;
+            hapticStrength = 0.86f;
+        }
+        else if (intensityMode == IntensityMode.Strong)
+        {
+            currentFrequency = 196f;
+            hapticStrength = 0.96f;
         }
     }
 
-    void OnDrawGizmos()
+    private void OnDrawGizmos()
     {
-        if (_debugPoints == null || _debugPoints.Count == 0)
-        {
-            // Nothing to draw
-            return;
-        }
+        if (_debugPoints == null || _debugPoints.Count == 0) return;
 
         // Draw a wire sphere at each of the points
         Gizmos.color = Color.red;
-        foreach (var point in _debugPoints)
-        {
-            Gizmos.DrawWireSphere(point, 0.005f);
-        }
+        foreach (var point in _debugPoints) Gizmos.DrawWireSphere(point, 0.005f);
     }
 
-    void OnDisable()
+    private void OnDisable()
     {
         // Stop the emitter when this GameObject is destroyed
         _amEmitter.stop();
@@ -140,16 +154,17 @@ public class HapticsController : MonoBehaviour
     }
 
     /// <summary>
-    /// Chooses which of the given points should be emitted this frame.
-    /// If there are fewer or equal points in the given list than the maximum then all will be chosen.
+    ///     Chooses which of the given points should be emitted this frame.
+    ///     If there are fewer or equal points in the given list than the maximum then all will be chosen.
     /// </summary>
     /// <param name="contactPoints">The list of possible points that could be emitted this frame.</param>
     /// <returns>A subset of the given list.</returns>
-    List<UnityEngine.Vector3> ChoosePointsToEmit(List<UnityEngine.Vector3> contactPoints)
+    private List<Vector3>
+        ChoosePointsToEmit(List<Vector3> contactPoints)
     {
-        var pointsToEmit = new List<UnityEngine.Vector3>();
+        var pointsToEmit = new List<Vector3>();
 
-        if (contactPoints.Count <= currentControlPoints)
+        if (contactPoints.Count <= _maxControlPoints)
         {
             // We can emit all the points
             pointsToEmit.AddRange(contactPoints);
@@ -160,22 +175,37 @@ public class HapticsController : MonoBehaviour
             // so we must choose which ones to emit.
             // This implementation chooses them randomly, but more sophisticated algorithms could be used
 
-                
-            
+
             var indices = new int[contactPoints.Count];
-            for (var i = 0; i < contactPoints.Count; i++)
-            {
-                indices[i] = i;
-            }
+            for (var i = 0; i < contactPoints.Count; i++) indices[i] = i;
+
             indices.OrderBy(a => Random.Range(0, int.MaxValue));
 
-            for (var i = 0; i < currentControlPoints; i++)
-            {
-                pointsToEmit.Add(contactPoints[indices[i]]);
-            }
-            
+            for (var i = 0; i < _maxControlPoints; i++) pointsToEmit.Add(contactPoints[indices[i]]);
         }
 
         return pointsToEmit;
+    }
+
+    public void PlayTick(float time)
+    {
+        if (currentFrequency > 0) return;
+
+        StartCoroutine(PlayTickRoutine(time));
+    }
+
+    private IEnumerator PlayTickRoutine(float time)
+    {
+        currentlyPayingTick++;
+
+        yield return new WaitForSeconds(time * 0.125f);
+
+
+        currentFrequency = 200f;
+        hapticStrength = 1.0f;
+
+        yield return new WaitForSeconds(time * 0.875f);
+
+        currentlyPayingTick--;
     }
 }

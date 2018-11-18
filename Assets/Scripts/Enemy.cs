@@ -1,37 +1,39 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using System;
 using UnityEngine.AI;
 
 public class Enemy : LivingEntity
 {
-    public LayerMask explosionTarget;
-    public float explosionForce = 1000f; //폭심지에서 발생하는 힘
-
-    public enum State { Idle, Chasing, Attacking};
-    State currentState; // 현재 AI 상태
-
-    public ParticleSystem deathEffect; // 적이 죽었을때 재생할 이펙트
-    public ParticleSystem hitEffect; // 적이 공격받았을때 재생할 이펙트
-
-    public float damage = 50f; // 적이 폭발하면서 줄 데미지
-    public float explosionDistance = 5; // 폭발 반경
-    public float explosionSpeed = 1.0f; // 폭발하는 속도
-
-    AudioSource audioPlayer; // 사운드 재생기
-    public AudioClip hitSound; // 맞았을때 소리
-
-    NavMeshAgent pathFinder; // 경로 AI
-    Transform target; // 추적 대상
-    LivingEntity targetEntity; // 추적 대상으로부터 가져온 '생명' 정보 
-    Material skinMaterial; // 표면의 색깔을 결정하는 애셋
+    public enum State
+    {
+        Idle,
+        Chasing,
+        Attacking
+    }
 
     public Color attackColor = Color.red; // 공격 컬러
+
+    private readonly float attackDistanceThreshold = 3.5f; // 공격을 시도하는 거리
+
+    private AudioSource audioPlayer; // 사운드 재생기
+    private State currentState; // 현재 AI 상태
+
+    public float damage = 50f; // 적이 폭발하면서 줄 데미지
+
+    public ParticleSystem deathEffect; // 적이 죽었을때 재생할 이펙트
+    public float explosionDistance = 5; // 폭발 반경
+    public float explosionForce = 1000f; //폭심지에서 발생하는 힘
+    public float explosionSpeed = 1.0f; // 폭발하는 속도
+    public LayerMask explosionTarget;
+    private bool hasTarget; // 추적할 대상이 있는가?
+    public ParticleSystem hitEffect; // 적이 공격받았을때 재생할 이펙트
+    public AudioClip hitSound; // 맞았을때 소리
     private Color originColor; // 원래 머티리얼의 컬러
 
-    float attackDistanceThreshold = 3.5f; // 공격을 시도하는 거리
-    bool hasTarget; // 추적할 대상이 있는가?
+    private NavMeshAgent pathFinder; // 경로 AI
+    private Material skinMaterial; // 표면의 색깔을 결정하는 애셋
+    private Transform target; // 추적 대상
+    private LivingEntity targetEntity; // 추적 대상으로부터 가져온 '생명' 정보 
 
 
     private void Awake()
@@ -39,7 +41,7 @@ public class Enemy : LivingEntity
         audioPlayer = GetComponent<AudioSource>();
         pathFinder = GetComponent<NavMeshAgent>();
 
-        if(GameObject.FindGameObjectWithTag("Player") != null)
+        if (GameObject.FindGameObjectWithTag("Player") != null)
         {
             hasTarget = true;
 
@@ -53,8 +55,8 @@ public class Enemy : LivingEntity
     protected override void Start()
     {
         base.Start();
-                
-        if(hasTarget)
+
+        if (hasTarget)
         {
             currentState = State.Chasing;
             StartCoroutine("UpdatePath"); //추적 루틴 시작
@@ -62,7 +64,7 @@ public class Enemy : LivingEntity
     }
 
     // 타겟이 죽었을때 체인으로 실행됨
-    void OnTargetDeath()
+    private void OnTargetDeath()
     {
         // 타겟이 죽었으니 더이상 추적안함
         hasTarget = false;
@@ -71,21 +73,18 @@ public class Enemy : LivingEntity
 
     private void Update()
     {
-        if(hasTarget)
+        if (hasTarget)
         {
-            float distance = Vector3.Distance(transform.position,target.position);
+            var distance = Vector3.Distance(transform.position, target.position);
 
-            if(distance < attackDistanceThreshold && currentState != State.Attacking)
-            {
-                StartCoroutine("Attack");
-            }
+            if (distance < attackDistanceThreshold && currentState != State.Attacking) StartCoroutine("Attack");
         }
     }
 
 
     // 외부에서 Enemy를 만들경우, 이것을 통해 디테일을 설정함
     public void Setup(float moveSpeed, float newDamage,
-        float newHeath,Color skinColor)
+        float newHeath, Color skinColor)
     {
         pathFinder.speed = moveSpeed;
         damage = newDamage;
@@ -111,7 +110,7 @@ public class Enemy : LivingEntity
         effectInstance.startColor = skinMaterial.color;
         effectInstance.Play();
         //아래 코드는 파티클 시스템 컴포넌트 측의 StopAction을 Destroy를 사용함으로써 대체할수도 있음
-        Destroy(effectInstance.gameObject , effectInstance.duration);
+        Destroy(effectInstance.gameObject, effectInstance.duration);
 
         base.OnDamage(damage, hitPoint, hitDirection);
     }
@@ -123,49 +122,41 @@ public class Enemy : LivingEntity
 
         var effectAudio = effectInstance.GetComponent<AudioSource>();
 
-        if(effectAudio != null)
-        {
-            effectAudio.Play();
-        }
+        if (effectAudio != null) effectAudio.Play();
 
         effectInstance.Play();
 
         Destroy(effectInstance.gameObject, effectInstance.duration);
 
 
-
         base.Die();
     }
 
-    IEnumerator UpdatePath()
+    private IEnumerator UpdatePath()
     {
-        float refreshRate = 0.25f;
+        var refreshRate = 0.25f;
 
         // 추적할 대상이 존재하는 동안 경로 갱신을 무한루프
-        while(hasTarget)
+        while (hasTarget)
         {
-            if(currentState == State.Chasing)
-            {
-                if(!dead)
-                {
+            if (currentState == State.Chasing)
+                if (!dead)
                     pathFinder.SetDestination(target.position);
-                }
-            }
             yield return new WaitForSeconds(refreshRate);
         }
     }
 
-    IEnumerator Attack()
+    private IEnumerator Attack()
     {
         currentState = State.Attacking; // 공격하는 상태로 전환
         pathFinder.isStopped = true; // AI 경로 추적을 중지
 
-        Color startColor = skinMaterial.color; // 시작 
-        Color targetColor = attackColor; // 변환 완료로 될 컬러
+        var startColor = skinMaterial.color; // 시작 
+        var targetColor = attackColor; // 변환 완료로 될 컬러
 
-        float percent = 0f; // 공격 진행도
+        var percent = 0f; // 공격 진행도
 
-        while(percent <= 1f)
+        while (percent <= 1f)
         {
             percent += Time.deltaTime * explosionSpeed;
 
@@ -178,33 +169,31 @@ public class Enemy : LivingEntity
 
         // transform.positino을 중심으로 구를 그려서
         // 겹치는 모든 콜라이더를 가져옴
-        Collider[] attackTargets
+        var attackTargets
             = Physics.OverlapSphere(transform.position,
-            explosionDistance,explosionTarget);
+                explosionDistance, explosionTarget);
 
-        for(int i = 0; i<attackTargets.Length; i++)
+        for (var i = 0; i < attackTargets.Length; i++)
         {
-            LivingEntity targetLivingEntity
+            var targetLivingEntity
                 = attackTargets[i].GetComponent<LivingEntity>();
 
-            if(targetLivingEntity != null)
+            if (targetLivingEntity != null)
             {
-                Transform targetTransform = targetLivingEntity.transform;
+                var targetTransform = targetLivingEntity.transform;
 
                 targetLivingEntity.OnDamage(damage,
                     targetTransform.position, transform.forward);
 
                 Debug.Log("공격당한 상대방 체력: "
-                    + targetLivingEntity.health);
+                          + targetLivingEntity.health);
             }
 
-            Rigidbody targetRigidbody = attackTargets[i].GetComponent<Rigidbody>();
+            var targetRigidbody = attackTargets[i].GetComponent<Rigidbody>();
 
-            if(targetRigidbody != null)
-            {
+            if (targetRigidbody != null)
                 targetRigidbody.AddExplosionForce(explosionForce,
                     transform.position, explosionDistance);
-            }
         }
 
         Die(); // 자폭이라서 공격하면 스스로 죽음

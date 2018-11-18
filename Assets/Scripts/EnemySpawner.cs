@@ -1,29 +1,25 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
 public class EnemySpawner : MonoBehaviour
 {
-    public float m_TimeBetSpawnMin = 1f;
-    public float m_TimeBetSpawnMax = 4f;
-
     public Enemy m_EnemyPrefab;
+    private float m_LastSpawnTime;
     public Transform m_SpawnPosTransform;
 
     private float m_TimeBetSpawn;
-    private float m_LastSpawnTime;
+    public float m_TimeBetSpawnMax = 4f;
+    public float m_TimeBetSpawnMin = 1f;
 
 
-    void Start()
+    private void Start()
     {
         FindObjectOfType<Player>().GetComponent<LivingEntity>().OnDeath += () => enabled = false;
 
         m_TimeBetSpawn = Random.Range(m_TimeBetSpawnMin, m_TimeBetSpawnMax);
     }
 
-    void Update()
+    private void Update()
     {
-
         if (Time.time >= m_LastSpawnTime + m_TimeBetSpawn)
         {
             m_LastSpawnTime = Time.time;
@@ -33,8 +29,5 @@ public class EnemySpawner : MonoBehaviour
 
             enemyInstance.Setup(3f, 50, 100, Color.green);
         }
-
     }
-
-
 }

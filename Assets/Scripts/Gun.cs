@@ -1,41 +1,49 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class Gun : MonoBehaviour {
+public class Gun : MonoBehaviour
+{
+    public enum State
+    {
+        Ready,
+        Empty,
+        Reloading
+    }
 
-    public Animator m_Animator; // 총의 애니메이터
-    public Transform m_FireTransform; // 총구의 위치를 나타내는 트랜스폼
-    public ParticleSystem m_ShellEjectEffect; // 탄피 배출 효과 재생기
-    public ParticleSystem m_MuzzleFlashEffect; // 총구 화염 효과 재생기
-
-    public AudioSource m_GunAudioPlayer; // 총 소리 재생기
-    public AudioClip m_ShotClip; // 발사 소리
-    public AudioClip m_ReloadClip; // 재장전 소리
-
-    public LineRenderer m_BulletLineRenderer; // 총알 궤적 랜더러
-
-    public GameObject m_ImpactPrefab; // 피탄 장소에 생성할 이펙트&데칼 원본
+    private HapticsController _hapticsController;
 
     public Text m_AmmoText; // 남은 탄환의 수를 표시할 UI Text
 
-    public int m_MaxAmmo = 13; // 탄창의 최대 탄약 수
-    public float m_TimeBetFire = 0.3f; // 발사와 발사 사이의 시간 간격
+    public Animator m_Animator; // 총의 애니메이터
+
+    public LineRenderer m_BulletLineRenderer; // 총알 궤적 랜더러
+    private int m_CurrentAmmo; // 탄창에 남은 현재 탄약 갯수
     public float m_Damage = 25;
-    public float m_ReloadTime = 2.0f;
     public float m_FireDistance = 100f;
+    public Transform m_FireTransform; // 총구의 위치를 나타내는 트랜스폼
 
-    public enum State { Ready, Empty, Reloading };
+    public AudioSource m_GunAudioPlayer; // 총 소리 재생기
 
-    public State m_CurrentState {get; private set;}
+    public GameObject m_ImpactPrefab; // 피탄 장소에 생성할 이펙트&데칼 원본
 
     private float m_LastFireTime; // 총을 마지막으로 발사한 시점
-    private int m_CurrentAmmo = 0; // 탄창에 남은 현재 탄약 갯수
+
+    public int m_MaxAmmo = 13; // 탄창의 최대 탄약 수
+    public ParticleSystem m_MuzzleFlashEffect; // 총구 화염 효과 재생기
+    public AudioClip m_ReloadClip; // 재장전 소리
+    public float m_ReloadTime = 2.0f;
+    public ParticleSystem m_ShellEjectEffect; // 탄피 배출 효과 재생기
+    public AudioClip m_ShotClip; // 발사 소리
+    public float m_TimeBetFire = 0.3f; // 발사와 발사 사이의 시간 간격
+
+    public State m_CurrentState { get; private set; }
 
 
     // Use this for initialization
-    void Awake() {
+    private void Awake()
+    {
+        _hapticsController = FindObjectOfType<HapticsController>();
         m_CurrentState = State.Empty; // 탄약이 빈 상태로 지정
         m_LastFireTime = 0; // 마지막으로 총을 쏜 시점을 초기화
 
@@ -49,11 +57,12 @@ public class Gun : MonoBehaviour {
     public void Fire()
     {
         // 총이 준비된 상태고 AND 현재 시간 >= 마지막 발사 시점 + 연사 간격
-        if(m_CurrentState == State.Ready && Time.time >= m_LastFireTime + m_TimeBetFire )
+        if (m_CurrentState == State.Ready && Time.time >= m_LastFireTime + m_TimeBetFire)
         {
             m_LastFireTime = Time.time; // 마지막으로 총을 쏜 시점이 현재 시점으로 갱신
 
             Shot();
+            _hapticsController.PlayTick(0.1f);
             UpdateUI();
         }
     }
@@ -64,25 +73,22 @@ public class Gun : MonoBehaviour {
         RaycastHit hit; // 레이캐스트 정보를 저장하는, 충돌 정보 컨테이너
 
         // 총을쏴서 총알이 맞은 곳 : 처음값으로는 총구 위치 + 총구 위치로 앞쪽 방향 * 사정거리
-        Vector3 hitPosition = m_FireTransform.position + m_FireTransform.forward * m_FireDistance;
+        var hitPosition = m_FireTransform.position + m_FireTransform.forward * m_FireDistance;
 
         // 레이캐스트(시작지점, 방향, 충돌 정보 컨테이너, 사정거리)
-        if(Physics.Raycast(m_FireTransform.position, m_FireTransform.forward, out hit, m_FireDistance))
+        if (Physics.Raycast(m_FireTransform.position, m_FireTransform.forward, out hit, m_FireDistance))
         {
             // 상대방이 IDamageable 로서 가져와진다면,
             // 상대방의 OnDamage 함수를 실행시켜서 데미지를 쥐어준다
-            IDamageable target = hit.collider.GetComponent<IDamageable>();
+            var target = hit.collider.GetComponent<IDamageable>();
 
-            if(target != null)
-            {
-                target.OnDamage(m_Damage,hit.point,hit.point - m_FireTransform.position);
-            }
+            if (target != null) target.OnDamage(m_Damage, hit.point, hit.point - m_FireTransform.position);
 
             // 충돌 위치를 가져오기
             hitPosition = hit.point;
 
             // 피탄 효과 게임 오브젝트를 복제 생성, 충돌 지점에, 충돌한 표면의 방향으로 생성
-            GameObject decal = Instantiate(m_ImpactPrefab, hitPosition, Quaternion.LookRotation(hit.normal));
+            var decal = Instantiate(m_ImpactPrefab, hitPosition, Quaternion.LookRotation(hit.normal));
 
             decal.transform.SetParent(hit.collider.transform);
         }
@@ -93,10 +99,7 @@ public class Gun : MonoBehaviour {
         // 남은 탄환의 수를 -1
         m_CurrentAmmo--;
 
-        if(m_CurrentAmmo <= 0)
-        {
-            m_CurrentState = State.Empty;
-        }
+        if (m_CurrentAmmo <= 0) m_CurrentState = State.Empty;
     }
 
     // 발사 이펙트를 재생하고 총알 궤적을 잠시 그렸다가 끄는 함수
@@ -117,10 +120,7 @@ public class Gun : MonoBehaviour {
         m_MuzzleFlashEffect.Play(); // 총구 화염 효과 재생
         m_ShellEjectEffect.Play(); // 탄피 배출 효과 재생
 
-        if (m_GunAudioPlayer.clip != m_ShotClip)
-        {
-            m_GunAudioPlayer.clip = m_ShotClip; // 총 발사 소리를 장전
-        }
+        if (m_GunAudioPlayer.clip != m_ShotClip) m_GunAudioPlayer.clip = m_ShotClip; // 총 발사 소리를 장전
 
         m_GunAudioPlayer.Play(); // 총격 소리 재생
 
@@ -132,27 +132,18 @@ public class Gun : MonoBehaviour {
     // 총의 탄약 UI에 남은 탄약수를 갱신해서 띄어줌
     private void UpdateUI()
     {
-        if(m_CurrentState == State.Empty)
-        {
+        if (m_CurrentState == State.Empty)
             m_AmmoText.text = "EMPTY";
-        }
-        else if(m_CurrentState == State.Reloading)
-        {
+        else if (m_CurrentState == State.Reloading)
             m_AmmoText.text = "RELOADING";
-        }
         else
-        {
             m_AmmoText.text = m_CurrentAmmo.ToString();
-        }
     }
 
     // 재장전을 시도
     public void Reload()
     {
-        if(m_CurrentState != State.Reloading)
-        {
-            StartCoroutine(ReloadRoutin());
-        }
+        if (m_CurrentState != State.Reloading) StartCoroutine(ReloadRoutin());
     }
 
     // 실제 재장전 처리가 진행되는 곳

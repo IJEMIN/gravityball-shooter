@@ -1,9 +1,48 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
 public class GravityBall : MonoBehaviour
 {
+    public enum InputMode
+    {
+        Swipe,
+        Push
+    }
+
+    private static GravityBall m_Instance;
+
+
+    private float angleSVelocity;
+    public AudioClip clickClip;
+
+    public InputMode inputMode = InputMode.Swipe;
+
+
+    private float lastClickAudioPlayTime;
+
+    [SerializeField] private AudioSource m_clickAudioPlayer;
+
+    public float m_ControlRange = 0.08f;
+
+    [SerializeField] private Rigidbody m_coreRigidbody;
+
+    private HapticsController m_HapticsController;
+
+    public string m_HorizontalInputName = "Horizontal";
+
+
+    public Color m_PressedColor = Color.red;
+
+    private Material m_RenderMaterial;
+
+    private readonly float m_RotationDeadzone = 1.25f;
+
+    [Range(0.1f, 5f)] public float m_RotationSenstive = 1f;
+
+    private Vector3 m_StartPos;
+    public string m_VerticalInputName = "Vertical";
+
+    [SerializeField] private Rigidbody m_wraperRigidbody;
+
     public static GravityBall Instance
     {
         get
@@ -12,104 +51,83 @@ public class GravityBall : MonoBehaviour
             {
                 m_Instance = FindObjectOfType<GravityBall>();
 
-                if (!m_Instance)
-                {
-                    Debug.LogError("You didn't Crate GravityBall!");
-                }
+                if (!m_Instance) Debug.LogError("You didn't Crate GravityBall!");
             }
+
             return m_Instance;
         }
     }
 
-    private static GravityBall m_Instance;
-
-    public LayerMask m_ContactTarget;
-    //private SphereCollider m_Collider;
-    private const float m_ColliderThickness = 0.001f;
 
     public bool m_IsTouched { get; private set; }
-
-    public HapticsController m_HapticsController;
-
-    private Vector3 m_StartPos;
-
-    private Material m_RenderMaterial;
-
-    private Rigidbody m_Rigidbody;
-
-    public Color m_IdleColor = Color.black;
-    public Color m_PressedColor = Color.red;
-
-    public string m_XDistanceInputName = "Horizontal";
-    public string m_ZDistanceINputName = "Vertical";
-
-    public string m_XSwipeInputName = "Scroll";
-    public string m_YSwipeInputName = "Spin";
-    public string m_ZSwipeInputName = "Stroke";
-
-    public float m_ControlRange = 0.08f;
-
-    [Range(0.01f, 0.2f)]
-    public float m_RotationDeadzone = 0.01f;
-
-    [Range(0.1f, 5f)]
-    public float m_RotationSenstive = 1f;
 
 
     private void Awake()
     {
-        m_Rigidbody = GetComponent<Rigidbody>();
         m_HapticsController = FindObjectOfType<HapticsController>();
     }
 
     private void Start()
     {
-        m_StartPos = m_Rigidbody.position;
+        m_StartPos = m_coreRigidbody.position;
 
         m_RenderMaterial = GetComponentInChildren<Renderer>().material;
-        m_RenderMaterial.color = m_IdleColor;
-    }
-
-    private void Update()
-    {
-        if (GetButton())
-        {
-            m_RenderMaterial.color = m_PressedColor;
-            m_HapticsController.currentFrequency = 200f;
-            m_HapticsController.hapticStrength = 1f;
-        }
-        else
-        {
-            m_RenderMaterial.color = m_IdleColor;
-
-            m_HapticsController.currentFrequency = 164f;
-            m_HapticsController.hapticStrength = 0.8f;
-        }
+        m_RenderMaterial.SetColor("_EmissionColor", Color.black);
     }
 
     private void FixedUpdate()
     {
-        // 범위를 벗어난 경우 범위 내부로 강제로 되돌리기
+        if (GetButton())
+        {
+            m_HapticsController.intensityMode = HapticsController.IntensityMode.Strong;
+            m_wraperRigidbody.angularVelocity = Vector3.zero;
+            m_RenderMaterial.SetColor("_EmissionColor", m_PressedColor);
+            return;
+        }
+
+        m_HapticsController.intensityMode = HapticsController.IntensityMode.Normal;
+        m_RenderMaterial.SetColor("_EmissionColor", Color.black);
+
         if (m_IsTouched)
         {
-            if (Vector3.Distance(m_StartPos, m_Rigidbody.position) > m_ControlRange)
+            var currentEulerX = m_wraperRigidbody.rotation.eulerAngles.x;
+
+            var deltaAngle = currentEulerX % 6f;
+
+            if (Mathf.Abs(deltaAngle) >= 0.1f)
             {
-                m_Rigidbody.MovePosition(m_StartPos + (m_Rigidbody.position - m_StartPos) * m_ControlRange);
+                Vector3 moveRotation;
+
+
+                if (m_wraperRigidbody.angularVelocity.x < 0f)
+                    moveRotation = new Vector3(-deltaAngle * 0.75f, 0f, 0f);
+                else
+                    moveRotation = new Vector3(deltaAngle * 0.75f, 0f, 0f);
+
+                transform.Rotate(moveRotation, Space.World);
             }
+
+
+            if (Time.time >= lastClickAudioPlayTime +
+                0.420f / Mathf.Abs(m_wraperRigidbody.angularVelocity.x))
+            {
+                m_clickAudioPlayer.PlayOneShot(clickClip);
+                lastClickAudioPlayTime = Time.time;
+                m_HapticsController.PlayTick(0.2f);
+            }
+
+
+            if (Vector3.Distance(m_StartPos, m_coreRigidbody.position) > m_ControlRange)
+                m_coreRigidbody.MovePosition(m_StartPos);
         }
     }
 
+
     public bool GetButton()
     {
-        if (!m_IsTouched)
-        {
-            return false;
-        }
+        if (!m_IsTouched) return false;
 
-        if ((m_StartPos.y - m_Rigidbody.position.y) >= m_ControlRange * 0.5f)
-        {
-            return true;
-        }
+        if (m_StartPos.y - m_coreRigidbody.position.y >= m_ControlRange * 0.5f) return true;
 
         return false;
     }
@@ -117,89 +135,50 @@ public class GravityBall : MonoBehaviour
 
     public float GetInputAxis(string inputName)
     {
-        if (!m_IsTouched)
-        {
-            return 0;
-        }
+        if (!m_IsTouched) return 0f;
 
-        // Swipe를 하고 있다면, 값을 억누르기
-        float inputFactorBySwipe = 1.0f;
-
-        if (m_Rigidbody.angularVelocity.sqrMagnitude >= 1.0f)
-        {
-            inputFactorBySwipe = 1f / m_Rigidbody.angularVelocity.sqrMagnitude;
-        }
+        var compress = GetButton() ? 0.2f : 1f;
 
 
-        Vector3 deltaVec = m_Rigidbody.position - m_StartPos;
+        if (inputMode == InputMode.Push)
+            return GetInputByPush(inputName) * compress;
+        return GetInputBySwipe(inputName) * compress;
+    }
 
-        Vector3 relativeVec = deltaVec / m_ControlRange;
+    private float GetInputByPush(string inputName)
+    {
+        var deltaVec = m_coreRigidbody.position - m_StartPos;
 
-        if (inputName == m_XDistanceInputName)
-        {
-            return Mathf.Clamp(relativeVec.x, -1.0f, 1.0f) * inputFactorBySwipe;
-        }
-        else if (inputName == m_ZDistanceINputName)
-        {
-            return Mathf.Clamp(relativeVec.z, -1.0f, 1.0f) * inputFactorBySwipe;
-        }
+        var relativeVec = deltaVec / m_ControlRange;
+
+        if (inputName == m_HorizontalInputName) return Mathf.Clamp(relativeVec.x, -1.0f, 1.0f);
+
+        if (inputName == m_VerticalInputName) return Mathf.Clamp(relativeVec.z, -1.0f, 1.0f);
 
         Debug.LogError("Can't Find Input Name: " + inputName);
-
         return 0;
     }
 
-    public float GetInputSwipe(string inputName)
+    private float GetInputBySwipe(string inputName)
     {
-        if (!m_IsTouched)
-        {
-            return 0;
-        }
-
-        Vector3 angularVelocity = m_Rigidbody.angularVelocity;
+        var angularVelocity = m_wraperRigidbody.angularVelocity;
         angularVelocity *= m_RotationSenstive;
 
 
-        float absX = Mathf.Abs(angularVelocity.x);
-        float absY = Mathf.Abs(angularVelocity.y);
-        float absZ = Mathf.Abs(angularVelocity.z);
+        angularVelocity.x = Mathf.Abs(angularVelocity.x) <= m_RotationDeadzone
+            ? 0
+            : angularVelocity.x;
+        angularVelocity.y = Mathf.Abs(angularVelocity.y) <= m_RotationDeadzone
+            ? 0
+            : angularVelocity.y;
+        angularVelocity.z = Mathf.Abs(angularVelocity.z) <= m_RotationDeadzone
+            ? 0
+            : angularVelocity.z;
 
-        angularVelocity.x = absX <= m_RotationDeadzone ? 0 : angularVelocity.x;
-        angularVelocity.y = absY <= m_RotationDeadzone ? 0 : angularVelocity.y;
-        angularVelocity.z = absZ <= m_RotationDeadzone ? 0 : angularVelocity.z;
 
-
-        if (absX >= absY && absX >= absZ)
-        {
-            angularVelocity.y = 0;
-            angularVelocity.z = 0;
-
-        }
-        else if(absY >= absX && absY >= absZ)
-        {
-            angularVelocity.x = 0;
-            angularVelocity.z = 0;
-        }
-        else if (absZ >= absX && absZ >= absY)
-        {
-            angularVelocity.x = 0;
-            angularVelocity.y = 0;
-        }
-
-        float factorByButton = GetButton() ? 0.01f : 1.0f;
-
-        if (inputName == m_XSwipeInputName)
-        {
-            return Mathf.Clamp(angularVelocity.x, -1f, 1f) * factorByButton;
-        }
-        else if (inputName == m_YSwipeInputName)
-        {
-            return Mathf.Clamp(angularVelocity.y, -1f, 1f) * factorByButton;
-        }
-        else if (inputName == m_ZSwipeInputName)
-        {
-            return Mathf.Clamp(angularVelocity.z, -1f, 1f) * factorByButton;
-        }
+        if (inputName == m_HorizontalInputName)
+            return Mathf.Clamp(angularVelocity.z, -1f, 1f);
+        if (inputName == m_VerticalInputName) return Mathf.Clamp(angularVelocity.x, -1f, 1f);
 
 
         Debug.LogError("Can't Find Input Name: " + inputName);
@@ -211,8 +190,6 @@ public class GravityBall : MonoBehaviour
     private void OnCollisionExit(Collision collision)
     {
         m_IsTouched = false;
-        m_Rigidbody.MoveRotation(Quaternion.identity);
-
     }
 
     private void OnCollisionStay(Collision collision)
@@ -221,20 +198,14 @@ public class GravityBall : MonoBehaviour
     }
 
 
-    void OnDrawGizmos()
+    private void OnDrawGizmos()
     {
-
         // Draw a wire sphere at each of the points
         Gizmos.color = Color.blue;
 
-        if (m_Rigidbody == null)
-        {
+        if (m_coreRigidbody == null)
             Gizmos.DrawWireSphere(transform.position, m_ControlRange);
-        }
         else
-        {
             Gizmos.DrawWireSphere(m_StartPos, m_ControlRange);
-
-        }
     }
 }
